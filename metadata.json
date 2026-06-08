@@ -1,0 +1,6 @@
+{
+  "name": "Aliza AI Assistant",
+  "description": "Real-time, voice-to-voice AI assistant with a sassy, playful persona, animated waveforms, and function call website portals.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
