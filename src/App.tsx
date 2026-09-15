@@ -1,9 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLiveSession } from "./hooks/useLiveSession";
 import { AuraOrb } from "./components/AuraOrb";
 import { VoiceWaveform } from "./components/VoiceWaveform";
 import { ToolBanner } from "./components/ToolBanner";
+import { MemoryBanner } from "./components/MemoryBanner";
+import { MemoryModal } from "./components/MemoryModal";
 import { SassyQuotes } from "./components/SassyQuotes";
+import { UserAccountBar } from "./components/UserAccountBar";
+import { SignInModal } from "./components/SignInModal";
+import { useAuth } from "./context/AuthContext";
+import { useMemory } from "./context/MemoryContext";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Sparkles,
@@ -19,6 +25,9 @@ import {
   CheckCircle,
   X,
   Lock,
+  User as UserIcon,
+  LogIn,
+  Brain,
 } from "lucide-react";
 
 export default function App() {
@@ -29,16 +38,45 @@ export default function App() {
     userVolume,
     alizaVolume,
     toolCallEvent,
+    memoryEvent,
     connect,
     disconnect,
     dismissToolCall,
+    dismissMemoryEvent,
     micAnalyser,
     speakerAnalyser,
   } = useLiveSession();
 
+  const { user, openSignInModal } = useAuth();
+  const {
+    memories,
+    preferredName,
+    addMemory,
+    recordSessionEnd,
+    isMemoryDrawerOpen,
+    openMemoryDrawer,
+    closeMemoryDrawer,
+  } = useMemory();
+
   // Dynamic system digital clock
   const [currentTime, setCurrentTime] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<{ healthy: boolean; keyConfigured: boolean } | null>(null);
+  const sessionStartRef = useRef<number>(0);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data) => {
+        setHealthStatus({
+          healthy: data.status === "healthy",
+          keyConfigured: !!data.geminiKeyConfigured,
+        });
+      })
+      .catch(() => {
+        setHealthStatus({ healthy: false, keyConfigured: false });
+      });
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -57,9 +95,19 @@ export default function App() {
 
   const handleToggleSession = async () => {
     if (state === "disconnected" || state === "error") {
-      await connect();
+      sessionStartRef.current = Date.now();
+      await connect({
+        user,
+        preferredName,
+        memories,
+        onRememberFact: (fact, category) => {
+          addMemory(fact, (category as any) || "fact");
+        },
+      });
     } else {
+      const durationSeconds = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 1000));
       disconnect();
+      recordSessionEnd(transcription || "Voice session with Aliza", durationSeconds);
     }
   };
 
@@ -85,14 +133,35 @@ export default function App() {
       {/* Absolute Glow Spotlights */}
       <div className="absolute top-0 inset-x-0 w-full h-[360px] bg-gradient-to-b from-pink-950/15 via-indigo-950/5 to-transparent blur-[140px] pointer-events-none" />
 
-      {/* Top Sophisticated Telemetry Ribbon */}
-      <div className="px-6 md:px-10 py-5 flex justify-between items-center text-[10px] opacity-40 tracking-[0.25em] font-mono font-medium border-b border-white/[0.02]">
-        <div className="flex items-center space-x-2">
+      {/* Top Sophisticated Telemetry Ribbon with Google Sign-in / User Bar */}
+      <div className="px-6 md:px-10 py-4 flex justify-between items-center text-[10px] tracking-[0.2em] font-mono font-medium border-b border-white/[0.04] relative z-20">
+        <div className="flex items-center space-x-2 text-white/50">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>REAL-TIME STREAM • GEMINI-3.1-FLASH-LIVE</span>
+          <span className="hidden sm:inline">REAL-TIME STREAM • GEMINI-3.1-FLASH-LIVE</span>
+          <span className="sm:hidden">LIVE AUDIO</span>
         </div>
-        <div className="hidden sm:block">{currentTime || "10:41 AM"}</div>
-        <div>SESSION ID: ALZ-0922</div>
+        <div className="flex items-center space-x-3">
+          <div className="hidden md:block text-white/40">{currentTime || "10:41 AM"}</div>
+
+          {/* Memory & History Button */}
+          <button
+            onClick={openMemoryDrawer}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-pink-500/40 text-xs text-zinc-300 transition-all cursor-pointer group shadow-sm"
+            title="Aliza's User Memory & Voice History"
+          >
+            <Brain className="w-3.5 h-3.5 text-pink-400 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline font-mono text-[10px] tracking-wider uppercase text-zinc-300 group-hover:text-white">
+              Memory
+            </span>
+            {memories.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-pink-500/20 text-pink-300 text-[9px] font-mono border border-pink-500/30">
+                {memories.length}
+              </span>
+            )}
+          </button>
+
+          <UserAccountBar />
+        </div>
       </div>
 
       {/* Middle Interactive Column Section */}
@@ -178,14 +247,18 @@ export default function App() {
                 <motion.p
                   key="default-tagline"
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.6 }}
+                  animate={{ opacity: 0.7 }}
                   exit={{ opacity: 0 }}
-                  className="text-sm font-light text-white/50 italic tracking-wide"
+                  className="text-sm font-light text-white/60 italic tracking-wide"
                 >
                   {state === "disconnected"
-                    ? "Don't just stand there staring, darling. Tap below and spark up a chat."
+                    ? user?.isCreator
+                      ? `Welcome back, Meghraj. Ready to chat with your creation? Tap connect below.`
+                      : "Don't just stand there staring, darling. Tap below and spark up a chat."
                     : state === "listening"
-                    ? "I'm listening, darling. Try to make it interesting."
+                    ? user?.isCreator
+                      ? "I'm listening, boss. What are we building or testing today?"
+                      : "I'm listening, darling. Try to make it interesting."
                     : "Calibrating synaptic voice relays..."}
                 </motion.p>
               )}
@@ -214,6 +287,16 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.95 }}
               >
                 <SassyQuotes />
+                {healthStatus && !healthStatus.keyConfigured && (
+                  <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-950/30 text-center space-y-1">
+                    <div className="text-[10px] font-mono uppercase text-amber-400 font-bold tracking-wider">
+                      ⚠️ Deployment Setup Required
+                    </div>
+                    <p className="text-[11px] text-amber-200/80 leading-tight">
+                      GEMINI_API_KEY was not detected in this container. Please add your Gemini API Key in Cloud Run environment variables or AI Studio Secrets.
+                    </p>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -319,8 +402,9 @@ export default function App() {
           </button>
         </div>
 
-        {/* Real-time Web Portals notification triggers */}
+        {/* Real-time Web Portals and Memory notification triggers */}
         <div className="w-full max-w-sm relative z-30">
+          <MemoryBanner event={memoryEvent} onDismiss={dismissMemoryEvent} />
           <ToolBanner event={toolCallEvent} onDismiss={dismissToolCall} />
         </div>
       </div>
@@ -391,6 +475,66 @@ export default function App() {
                   </ul>
                 </div>
 
+                {/* Current User & Identity Profile Card */}
+                <div className="p-4 bg-zinc-950/80 border border-white/5 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold font-mono tracking-widest uppercase text-zinc-300 flex items-center space-x-2">
+                      <UserIcon className="w-3.5 h-3.5 text-pink-400" />
+                      <span>Authenticated Account</span>
+                    </h4>
+                    {user?.isCreator && (
+                      <span className="px-2 py-0.5 bg-pink-500/20 border border-pink-500/40 text-[9px] font-mono font-bold text-pink-300 rounded">
+                        CREATOR
+                      </span>
+                    )}
+                  </div>
+
+                  {user ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                          {user.photoUrl ? (
+                            <img src={user.photoUrl} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span>{user.name.charAt(0).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-xs font-semibold text-white truncate">{user.name}</p>
+                          <p className="text-[11px] text-zinc-400 font-mono truncate">{user.email}</p>
+                          <p className="text-[10px] text-zinc-500 capitalize">Method: {user.provider}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setShowSettings(false);
+                          openSignInModal();
+                        }}
+                        className="w-full py-2 px-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-zinc-200 hover:text-white font-medium flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                      >
+                        <span>Switch Account / Sign In with Google</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <p className="text-xs text-zinc-400">
+                        Sign in with Google to personalize your voice sessions with Aliza.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setShowSettings(false);
+                          openSignInModal();
+                        }}
+                        className="w-full py-2.5 px-3 bg-white hover:bg-zinc-100 text-zinc-900 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-md"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        <span>Sign In with Google</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Security and Credentials status */}
                 <div className="p-4 bg-[#080c14]/40 border border-blue-900/10 rounded-xl flex items-start space-x-3 text-zinc-400">
                   <Lock className="w-5 h-5 text-indigo-400 shrink-0" />
@@ -415,6 +559,12 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* User Memory & History Modal */}
+      <MemoryModal isOpen={isMemoryDrawerOpen} onClose={closeMemoryDrawer} />
+
+      {/* Sign In Modal */}
+      <SignInModal />
 
       {/* Bottom Luxury Linear Accent Progress Strip */}
       <footer className="relative z-10 w-full bg-transparent flex flex-col pointer-events-none">

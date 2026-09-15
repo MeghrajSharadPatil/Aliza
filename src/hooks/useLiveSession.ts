@@ -22,6 +22,20 @@ export interface ToolCallEvent {
   timestamp: string;
 }
 
+export interface MemoryCallEvent {
+  active: boolean;
+  fact: string;
+  category?: string;
+  timestamp: string;
+}
+
+export interface ConnectOptions {
+  user?: { name: string; email: string; isCreator?: boolean } | null;
+  memories?: Array<{ fact: string; category?: string }>;
+  preferredName?: string;
+  onRememberFact?: (fact: string, category?: string) => void;
+}
+
 export function useLiveSession() {
   const [state, _setState] = useState<SessionState>("disconnected");
   const [errorState, setErrorState] = useState<string | null>(null);
@@ -31,6 +45,10 @@ export function useLiveSession() {
   
   // Track tool calls live
   const [toolCallEvent, setToolCallEvent] = useState<ToolCallEvent | null>(null);
+  const [memoryEvent, setMemoryEvent] = useState<MemoryCallEvent | null>(null);
+
+  // Callback ref for saving facts
+  const onRememberFactRef = useRef<((fact: string, category?: string) => void) | null>(null);
 
   // Refs to avoid stale closures inside onmessage and audio process callbacks
   const stateRef = useRef<SessionState>("disconnected");
@@ -119,8 +137,28 @@ export function useLiveSession() {
   }, [cleanupBuffersAndNodes]);
 
   // Connects socket and media pipelines
-  const connect = async () => {
+  const connect = async (
+    userOrOptions?: { name: string; email: string; isCreator?: boolean } | ConnectOptions | null
+  ) => {
     if (stateRef.current !== "disconnected") return;
+
+    let user: { name: string; email: string; isCreator?: boolean } | null = null;
+    let memories: Array<{ fact: string; category?: string }> = [];
+    let preferredName = "";
+
+    if (userOrOptions) {
+      if ("email" in userOrOptions && "name" in userOrOptions) {
+        user = userOrOptions as any;
+      } else if ("user" in userOrOptions || "memories" in userOrOptions || "preferredName" in userOrOptions) {
+        const opts = userOrOptions as ConnectOptions;
+        user = opts.user || null;
+        memories = opts.memories || [];
+        preferredName = opts.preferredName || "";
+        if (opts.onRememberFact) {
+          onRememberFactRef.current = opts.onRememberFact;
+        }
+      }
+    }
 
     setState("connecting");
     setErrorState(null);
@@ -140,6 +178,9 @@ export function useLiveSession() {
       // 2. Initialize Recording (Capture) context and Downsample Processor
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       const recContext = new AudioCtxClass();
+      if (recContext.state === "suspended") {
+        await recContext.resume();
+      }
       recordingContextRef.current = recContext;
 
       const micSource = recContext.createMediaStreamSource(stream);
@@ -159,6 +200,9 @@ export function useLiveSession() {
 
       // 3. Initialize separate Playback context at native outputs
       const playContext = new AudioCtxClass();
+      if (playContext.state === "suspended") {
+        await playContext.resume();
+      }
       playbackContextRef.current = playContext;
 
       // Create speaker analyser to visualize audio responses
@@ -167,9 +211,23 @@ export function useLiveSession() {
       speakerAnalyser.connect(playContext.destination);
       speakerAnalyserRef.current = speakerAnalyser;
 
-      // 4. Connect Web Socket with backend Express Server
+      // 4. Connect Web Socket with backend Express Server (including authenticated user parameters & memory)
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const socketUrl = `${protocol}//${window.location.host}/live`;
+      const params = new URLSearchParams();
+      if (user) {
+        params.set("userName", user.name);
+        params.set("userEmail", user.email);
+        if (user.isCreator) params.set("isCreator", "true");
+      }
+      if (preferredName) {
+        params.set("preferredName", preferredName);
+      }
+      if (memories && memories.length > 0) {
+        params.set("memories", JSON.stringify(memories.map((m) => m.fact)));
+      }
+
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+      const socketUrl = `${protocol}//${window.location.host}/live${queryStr}`;
       console.log(`[Session] Connection targeted on ${socketUrl}`);
 
       const wsConnection = new WebSocket(socketUrl);
@@ -302,6 +360,22 @@ export function useLiveSession() {
                 }
               }, 1200);
             }
+
+            if (payload.name === "rememberUserFact") {
+              const fact = payload.args?.fact;
+              const category = payload.args?.category || "fact";
+              if (fact) {
+                setMemoryEvent({
+                  active: true,
+                  fact: String(fact),
+                  category: String(category),
+                  timestamp: new Date().toLocaleTimeString(),
+                });
+                if (onRememberFactRef.current) {
+                  onRememberFactRef.current(String(fact), String(category));
+                }
+              }
+            }
           }
 
           if (payload.type === "error") {
@@ -337,6 +411,10 @@ export function useLiveSession() {
     setToolCallEvent(null);
   };
 
+  const dismissMemoryEvent = () => {
+    setMemoryEvent(null);
+  };
+
   useEffect(() => {
     // Component unmount safeguards
     return () => {
@@ -354,9 +432,11 @@ export function useLiveSession() {
     userVolume,
     alizaVolume,
     toolCallEvent,
+    memoryEvent,
     connect,
     disconnect,
     dismissToolCall,
+    dismissMemoryEvent,
     micAnalyser: micAnalyserRef.current,
     speakerAnalyser: speakerAnalyserRef.current,
   };
