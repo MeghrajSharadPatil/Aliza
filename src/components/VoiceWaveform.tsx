@@ -18,6 +18,18 @@ export const VoiceWaveform: React.FC<VoiceWaveformProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Use refs for continuously changing audio data to avoid tearing down and blinking canvas
+  const analyserRef = useRef(analyser);
+  analyserRef.current = analyser;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  const colorRef = useRef(color);
+  colorRef.current = color;
+  const lineCountRef = useRef(lineCount);
+  lineCountRef.current = lineCount;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -25,12 +37,21 @@ export const VoiceWaveform: React.FC<VoiceWaveformProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let lastW = 0;
+    let lastH = 0;
+
     const resizeCanvas = () => {
       const parent = canvas.parentElement;
       if (parent) {
-        canvas.width = parent.clientWidth * window.devicePixelRatio;
-        canvas.height = parent.clientHeight * window.devicePixelRatio;
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        const targetW = parent.clientWidth * window.devicePixelRatio;
+        const targetH = parent.clientHeight * window.devicePixelRatio;
+        if (targetW !== lastW || targetH !== lastH) {
+          lastW = targetW;
+          lastH = targetH;
+          canvas.width = targetW;
+          canvas.height = targetH;
+          ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+        }
       }
     };
 
@@ -47,33 +68,39 @@ export const VoiceWaveform: React.FC<VoiceWaveformProps> = ({
       // Clear with soft trails for retro glowing oscilloscopes
       ctx.clearRect(0, 0, width, height);
 
+      const currentAnalyser = analyserRef.current;
+      const currentActive = isActiveRef.current;
+      const currentVol = volumeRef.current;
+      const currentColor = colorRef.current;
+      const currentLines = lineCountRef.current;
+
       // Data array for real-world analyser decoding
-      const bufferLength = analyser ? analyser.frequencyBinCount : 128;
+      const bufferLength = currentAnalyser ? currentAnalyser.frequencyBinCount : 128;
       const dataArray = new Uint8Array(bufferLength);
 
-      let maxVal = volume;
-      if (analyser && isActive) {
-        analyser.getByteTimeDomainData(dataArray);
+      let maxVal = currentVol;
+      if (currentAnalyser && currentActive) {
+        currentAnalyser.getByteTimeDomainData(dataArray);
         // Calculate dynamic peak
         let total = 0;
         for (let i = 0; i < bufferLength; i++) {
           const val = (dataArray[i] - 128) / 128.0;
           total += Math.abs(val);
         }
-        maxVal = Math.max(volume, total / bufferLength);
+        maxVal = Math.max(currentVol, total / bufferLength);
       }
 
       // Add simple damping logic
-      const scale = isActive ? Math.max(0.12, maxVal * 2.5) : 0.02;
+      const scale = currentActive ? Math.max(0.12, maxVal * 2.5) : 0.02;
 
       // Render layered waves for complex, premium 3D layout effects
-      for (let l = 0; l < lineCount; l++) {
+      for (let l = 0; l < currentLines; l++) {
         ctx.beginPath();
         ctx.lineWidth = l === 0 ? 3 : 1.5;
         
         // Dynamic opacity for inner layers
         const opacity = l === 0 ? "1.0" : l === 1 ? "0.6" : "0.3";
-        ctx.strokeStyle = color.replace("1.0", opacity).replace("0.8", opacity);
+        ctx.strokeStyle = currentColor.replace("1.0", opacity).replace("0.8", opacity);
 
         const waveOffset = l * Math.PI * 0.45; // Offset waves
         const speed = 0.08 + l * 0.04;
@@ -90,7 +117,7 @@ export const VoiceWaveform: React.FC<VoiceWaveformProps> = ({
           const sineTerm2 = Math.cos(normalizedX * Math.PI * 7.0 - phase * speed * 0.5 + waveOffset * 0.5);
           
           let audioMod = 0;
-          if (analyser && isActive && dataArray.length > 0) {
+          if (currentAnalyser && currentActive && dataArray.length > 0) {
             const index = Math.floor(normalizedX * dataArray.length);
             audioMod = (dataArray[index] - 128) / 128.0;
           } else {
@@ -121,7 +148,7 @@ export const VoiceWaveform: React.FC<VoiceWaveformProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [analyser, volume, isActive, color, lineCount]);
+  }, []);
 
   return (
     <canvas

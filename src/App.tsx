@@ -171,7 +171,7 @@ export default function App() {
       {/* Top Sophisticated Telemetry Ribbon with Google Sign-in / User Bar */}
       <div className="px-6 md:px-10 py-4 flex justify-between items-center text-[10px] tracking-[0.2em] font-mono font-medium border-b border-white/[0.04] relative z-20">
         <div className="flex items-center space-x-2 text-white/50">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
           <span className="hidden sm:inline">REAL-TIME STREAM • GEMINI-3.8-LIVE</span>
           <span className="sm:hidden">LIVE AUDIO</span>
         </div>

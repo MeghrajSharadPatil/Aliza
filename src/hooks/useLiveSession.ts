@@ -64,6 +64,7 @@ export function useLiveSession() {
   const playbackContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSoundsRef = useRef<AudioBufferSourceNode[]>([]);
+  const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Analyzer nodes for rendering visualizer waves
   const micAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -77,6 +78,10 @@ export function useLiveSession() {
 
   // Immediate interrupt cleanup for continuous playback source arrays
   const stopAllPlayingAudio = useCallback(() => {
+    if (speakingTimeoutRef.current) {
+      clearTimeout(speakingTimeoutRef.current);
+      speakingTimeoutRef.current = null;
+    }
     activeSoundsRef.current.forEach((source) => {
       try {
         source.stop();
@@ -328,8 +333,16 @@ export function useLiveSession() {
           }
 
           if (payload.type === "audio") {
-            // Instant session state transition to speaking when audio responses stream in
-            setState("speaking");
+            // Cancel any pending fallback to listening
+            if (speakingTimeoutRef.current) {
+              clearTimeout(speakingTimeoutRef.current);
+              speakingTimeoutRef.current = null;
+            }
+
+            // Smooth session state transition to speaking
+            if (stateRef.current !== "speaking") {
+              setState("speaking");
+            }
             
             // Decodes base64 response chunk (24kHz standard output) and schedules it
             if (playbackContextRef.current) {
@@ -374,10 +387,16 @@ export function useLiveSession() {
               sourceNode.onended = () => {
                 activeSoundsRef.current = activeSoundsRef.current.filter((n) => n !== sourceNode);
                 
-                // If there are no active play-blocks left, transit her visually back to listening
+                // If there are no active play-blocks left, transit back to listening with a graceful debounce
+                // This stops state flashing/blinking between audio packet streams
                 if (activeSoundsRef.current.length === 0 && stateRef.current === "speaking") {
-                  setState("listening");
-                  setAlizaVolume(0);
+                  if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
+                  speakingTimeoutRef.current = setTimeout(() => {
+                    if (activeSoundsRef.current.length === 0 && stateRef.current === "speaking") {
+                      setState("listening");
+                      setAlizaVolume(0);
+                    }
+                  }, 400);
                 }
               };
             }

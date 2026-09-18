@@ -47,7 +47,7 @@ export const AuraOrb: React.FC<AuraOrbProps> = ({
           core: "bg-gradient-to-tr from-pink-500/80 to-indigo-600 shadow-[0_0_90px_rgba(236,72,153,0.35)]",
           halo: "border-pink-500/25",
           text: "text-pink-400",
-          statusColor: "bg-pink-500 animate-ping",
+          statusColor: "bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.9)]",
           borderColor: "border-pink-500/50",
         };
       case "speaking":
@@ -56,7 +56,7 @@ export const AuraOrb: React.FC<AuraOrbProps> = ({
           core: "bg-gradient-to-tr from-pink-600 to-indigo-600 shadow-[0_0_100px_rgba(236,72,153,0.45)]",
           halo: "border-pink-500/40",
           text: "text-pink-300",
-          statusColor: "bg-pink-500",
+          statusColor: "bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,1)]",
           borderColor: "border-pink-400/60",
         };
       case "error":
@@ -83,7 +83,7 @@ export const AuraOrb: React.FC<AuraOrbProps> = ({
       <div className="absolute w-[350px] h-[350px] border border-white/[0.04] rounded-full pointer-events-none" />
       
       {/* 250px Interactive Glowing Indicator */}
-      <div className={`absolute w-[250px] h-[250px] border border-pink-500/5 rounded-full pointer-events-none ${state !== "disconnected" ? "animate-pulse border-pink-500/10" : ""}`} />
+      <div className={`absolute w-[250px] h-[250px] border border-pink-500/5 rounded-full pointer-events-none ${state !== "disconnected" ? "border-pink-500/10" : ""}`} />
 
       {/* Dynamic Ambient Background Glow */}
       <div
@@ -104,12 +104,12 @@ export const AuraOrb: React.FC<AuraOrbProps> = ({
       <motion.div
         animate={
           state !== "disconnected"
-            ? { scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }
+            ? { scale: [1, 1.08, 1], opacity: [0.3, 0.5, 0.3] }
             : { scale: 1, opacity: 0.15 }
         }
         transition={{
           repeat: Infinity,
-          duration: state === "speaking" ? 1.4 : 3.5,
+          duration: 3.2,
           ease: "easeInOut",
         }}
         className={`absolute w-[240px] h-[240px] rounded-full border ${theme.halo} -z-1 pointer-events-none`}
@@ -123,17 +123,15 @@ export const AuraOrb: React.FC<AuraOrbProps> = ({
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.96 }}
         animate={
-          state === "speaking"
-            ? { scale: [1, 1.06, 1] }
-            : state === "listening"
-            ? { scale: [1, 1.03, 1] }
+          state === "speaking" || state === "listening"
+            ? { scale: [1, 1.025, 1] }
             : { scale: 1 }
         }
         transition={
           state === "speaking" || state === "listening"
             ? {
                 repeat: Infinity,
-                duration: state === "speaking" ? 0.35 : 1.5,
+                duration: 2.2,
                 ease: "easeInOut",
               }
             : {
