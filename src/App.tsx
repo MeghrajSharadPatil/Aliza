@@ -61,20 +61,26 @@ export default function App() {
   // Dynamic system digital clock
   const [currentTime, setCurrentTime] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<{ healthy: boolean; keyConfigured: boolean } | null>(null);
+  const [healthStatus, setHealthStatus] = useState<{
+    healthy: boolean;
+    keyConfigured: boolean;
+    serverReachable: boolean;
+  } | null>(null);
   const sessionStartRef = useRef<number>(0);
 
   useEffect(() => {
     fetch("/api/health")
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
         setHealthStatus({
           healthy: data.status === "healthy",
           keyConfigured: !!data.geminiKeyConfigured,
+          serverReachable: true,
         });
       })
       .catch(() => {
-        setHealthStatus({ healthy: false, keyConfigured: false });
+        setHealthStatus({ healthy: false, keyConfigured: false, serverReachable: false });
       });
   }, []);
 
@@ -137,7 +143,7 @@ export default function App() {
       <div className="px-6 md:px-10 py-4 flex justify-between items-center text-[10px] tracking-[0.2em] font-mono font-medium border-b border-white/[0.04] relative z-20">
         <div className="flex items-center space-x-2 text-white/50">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="hidden sm:inline">REAL-TIME STREAM • GEMINI-3.1-FLASH-LIVE</span>
+          <span className="hidden sm:inline">REAL-TIME STREAM • GEMINI-3.8-LIVE</span>
           <span className="sm:hidden">LIVE AUDIO</span>
         </div>
         <div className="flex items-center space-x-3">
@@ -279,7 +285,7 @@ export default function App() {
         {/* Sassy Quote Revolver or Error Messages */}
         <div className="w-full max-w-sm">
           <AnimatePresence mode="wait">
-            {state === "disconnected" && (
+            {state === "disconnected" && !errorState && (
               <motion.div
                 key="quotes"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -287,34 +293,38 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.95 }}
               >
                 <SassyQuotes />
-                {healthStatus && !healthStatus.keyConfigured && (
+                {healthStatus && (!healthStatus.serverReachable || !healthStatus.keyConfigured) && (
                   <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-950/30 text-center space-y-1">
                     <div className="text-[10px] font-mono uppercase text-amber-400 font-bold tracking-wider">
-                      ⚠️ Deployment Setup Required
+                      {!healthStatus.serverReachable
+                        ? "⚠️ Node.js Backend Offline"
+                        : "⚠️ Gemini API Key Required"}
                     </div>
                     <p className="text-[11px] text-amber-200/80 leading-tight">
-                      GEMINI_API_KEY was not detected in this container. Please add your Gemini API Key in Cloud Run environment variables or AI Studio Secrets.
+                      {!healthStatus.serverReachable
+                        ? "The app cannot reach the Node.js backend server. If hosted on a static provider like Vercel, the real-time WebSocket voice server is not running. Deploy to Google Cloud Run (via AI Studio Deploy) or Render/Railway."
+                        : "The backend server is running, but GEMINI_API_KEY was not detected in environment variables. Add your Gemini API Key in your host's environment settings."}
                     </p>
                   </div>
                 )}
               </motion.div>
             )}
 
-            {state === "error" && errorState && (
+            {(state === "error" || errorState) && (
               <motion.div
                 key="err-banner"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="p-5 rounded-2xl border border-red-500/20 bg-[#0c0405] text-center space-y-3 shadow-[0_0_20px_rgba(239,68,68,0.05)]"
+                className="p-5 rounded-2xl border border-red-500/30 bg-[#0c0405] text-center space-y-3 shadow-[0_0_20px_rgba(239,68,68,0.15)]"
               >
                 <h4 className="text-xs font-mono font-bold text-red-400 tracking-widest uppercase">
                   DIAGNOSTIC FAULT REPORT
                 </h4>
-                <p className="text-xs text-zinc-400 leading-snug">{errorState}</p>
+                <p className="text-xs text-zinc-300 leading-snug">{errorState || "Connection terminated unexpectedly."}</p>
                 <button
                   onClick={handleToggleSession}
-                  className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-[10px] font-mono rounded-lg text-white font-bold transition-all cursor-pointer"
+                  className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-[10px] font-mono rounded-lg text-white font-bold transition-all cursor-pointer shadow-md"
                 >
                   REBOOT ENGINE
                 </button>

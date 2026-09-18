@@ -153,7 +153,7 @@ wss.on("connection", (clientWs: WebSocket, request: any) => {
 
   // Connection promise
   const sessionPromise = ai.live.connect({
-    model: "gemini-3.1-flash-live-preview",
+    model: "gemini-3.8-live",
     callbacks: {
       onmessage: (message: any) => {
         if (isClosed) return;

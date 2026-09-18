@@ -124,7 +124,7 @@ export function useLiveSession() {
     setAlizaVolume(0);
   }, [stopAllPlayingAudio]);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback((targetState: SessionState = "disconnected") => {
     cleanupBuffersAndNodes();
 
     if (socketRef.current) {
@@ -132,15 +132,19 @@ export function useLiveSession() {
       socketRef.current = null;
     }
 
-    setState("disconnected");
-    setTranscription("");
+    setState(targetState);
+    if (targetState === "disconnected") {
+      setTranscription("");
+    }
   }, [cleanupBuffersAndNodes]);
 
   // Connects socket and media pipelines
   const connect = async (
     userOrOptions?: { name: string; email: string; isCreator?: boolean } | ConnectOptions | null
   ) => {
-    if (stateRef.current !== "disconnected") return;
+    if (stateRef.current === "connecting" || stateRef.current === "listening" || stateRef.current === "speaking") {
+      return;
+    }
 
     let user: { name: string; email: string; isCreator?: boolean } | null = null;
     let memories: Array<{ fact: string; category?: string }> = [];
@@ -164,51 +168,70 @@ export function useLiveSession() {
     setErrorState(null);
     setTranscription("");
 
+    // Mobile & browser environment check for mediaDevices
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setErrorState(
+        "Microphone access is unavailable. Please ensure you are accessing via HTTPS (or localhost) and using a supported browser like Chrome or Safari."
+      );
+      disconnect("error");
+      return;
+    }
+
     try {
-      // 1. Establish microphone media access early to prevent web pipeline crashes
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      micStreamRef.current = stream;
-
-      // 2. Initialize Recording (Capture) context and Downsample Processor
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      const recContext = new AudioCtxClass();
-      if (recContext.state === "suspended") {
-        await recContext.resume();
+      // 1. Establish microphone media access early
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        micStreamRef.current = stream;
+      } catch (micErr: any) {
+        console.error("[Session] Microphone permission rejected or hardware inaccessible:", micErr);
+        const isPermissionDenied =
+          micErr.name === "NotAllowedError" ||
+          micErr.name === "PermissionDeniedError" ||
+          micErr.message?.toLowerCase().includes("permission");
+        setErrorState(
+          isPermissionDenied
+            ? "Microphone access was blocked. Tap the lock/tune icon in your browser URL bar to allow microphone access, then try again."
+            : `Microphone device error: ${micErr.message || "Failed to initialize audio capture."}`
+        );
+        disconnect("error");
+        return;
       }
-      recordingContextRef.current = recContext;
 
-      const micSource = recContext.createMediaStreamSource(stream);
-      const nativeSampleRate = recContext.sampleRate;
+      // 2. Initialize unified AudioContext (single context prevents mobile iOS/Android audio conflicts)
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      const unifiedAudioContext = new AudioCtxClass();
+      if (unifiedAudioContext.state === "suspended") {
+        await unifiedAudioContext.resume();
+      }
+      recordingContextRef.current = unifiedAudioContext;
+      playbackContextRef.current = unifiedAudioContext;
+
+      const micSource = unifiedAudioContext.createMediaStreamSource(stream);
+      const nativeSampleRate = unifiedAudioContext.sampleRate;
 
       // Create mic analyser to visualize user input
-      const micAnalyser = recContext.createAnalyser();
+      const micAnalyser = unifiedAudioContext.createAnalyser();
       micAnalyser.fftSize = 256;
       micSource.connect(micAnalyser);
       micAnalyserRef.current = micAnalyser;
 
       // Script processor: 4096 buffer size, 1 input channel, 1 output channel
-      const processor = recContext.createScriptProcessor(4096, 1, 1);
+      const processor = unifiedAudioContext.createScriptProcessor(4096, 1, 1);
       micSource.connect(processor);
-      processor.connect(recContext.destination);
+      processor.connect(unifiedAudioContext.destination);
       processorNodeRef.current = processor;
 
-      // 3. Initialize separate Playback context at native outputs
-      const playContext = new AudioCtxClass();
-      if (playContext.state === "suspended") {
-        await playContext.resume();
-      }
-      playbackContextRef.current = playContext;
-
       // Create speaker analyser to visualize audio responses
-      const speakerAnalyser = playContext.createAnalyser();
+      const speakerAnalyser = unifiedAudioContext.createAnalyser();
       speakerAnalyser.fftSize = 256;
-      speakerAnalyser.connect(playContext.destination);
+      speakerAnalyser.connect(unifiedAudioContext.destination);
       speakerAnalyserRef.current = speakerAnalyser;
 
       // 4. Connect Web Socket with backend Express Server (including authenticated user parameters & memory)
@@ -380,7 +403,7 @@ export function useLiveSession() {
 
           if (payload.type === "error") {
             setErrorState(payload.error);
-            disconnect();
+            disconnect("error");
           }
         } catch (e) {
           console.error("[Session] Error handling streaming payload:", e);
@@ -389,20 +412,31 @@ export function useLiveSession() {
 
       wsConnection.onerror = (err) => {
         console.error("[Session] Socket pipeline encountered error state:", err);
-        setErrorState("WebSocket pipeline connection error.");
-        disconnect();
+        if (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")) {
+          setErrorState(
+            "Vercel serverless does not support persistent WebSockets. Deploy to Google Cloud Run (via AI Studio Deploy button) or Render/Railway for real-time voice streaming."
+          );
+        } else {
+          setErrorState("WebSocket connection failed. Ensure the backend server is reachable and running.");
+        }
+        disconnect("error");
       };
 
-      wsConnection.onclose = () => {
-        console.log("[Session] Socket pipeline terminated by host.");
-        if (stateRef.current !== "disconnected") {
-          disconnect();
+      wsConnection.onclose = (event) => {
+        console.log("[Session] Socket pipeline closed by host. Code:", event.code, "Reason:", event.reason);
+        if (stateRef.current !== "disconnected" && stateRef.current !== "error") {
+          if (event.code !== 1000) {
+            setErrorState((prev) => prev || "Voice session ended unexpectedly. Check server logs or connection.");
+            disconnect("error");
+          } else {
+            disconnect("disconnected");
+          }
         }
       };
     } catch (err: any) {
       console.error("[Session] Critical media connection failed:", err);
       setErrorState(err.message || "Failed to initialize standard user recording devices.");
-      disconnect();
+      disconnect("error");
     }
   };
 
