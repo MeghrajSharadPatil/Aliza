@@ -42,6 +42,7 @@ export function useLiveSession() {
   const [transcription, setTranscription] = useState<string>("");
   const [userVolume, setUserVolume] = useState<number>(0);
   const [alizaVolume, setAlizaVolume] = useState<number>(0);
+  const [hasMicHardware, setHasMicHardware] = useState<boolean>(true);
   
   // Track tool calls live
   const [toolCallEvent, setToolCallEvent] = useState<ToolCallEvent | null>(null);
@@ -178,9 +179,11 @@ export function useLiveSession() {
     }
 
     try {
-      // 1. Establish microphone media access early
-      let stream: MediaStream;
+      // 1. Establish microphone media access with progressive fallback
+      let stream: MediaStream | null = null;
+
       try {
+        // Attempt 1: High quality echo cancelled stream
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -189,19 +192,46 @@ export function useLiveSession() {
           },
         });
         micStreamRef.current = stream;
-      } catch (micErr: any) {
-        console.error("[Session] Microphone permission rejected or hardware inaccessible:", micErr);
-        const isPermissionDenied =
-          micErr.name === "NotAllowedError" ||
-          micErr.name === "PermissionDeniedError" ||
-          micErr.message?.toLowerCase().includes("permission");
-        setErrorState(
-          isPermissionDenied
-            ? "Microphone access was blocked. Tap the lock/tune icon in your browser URL bar to allow microphone access, then try again."
-            : `Microphone device error: ${micErr.message || "Failed to initialize audio capture."}`
-        );
-        disconnect("error");
-        return;
+        setHasMicHardware(true);
+      } catch (firstErr: any) {
+        console.warn("[Session] Constrained microphone request failed, trying unconstrained fallback:", firstErr);
+        try {
+          // Attempt 2: Basic unconstrained audio (fixes OverconstrainedError / driver quirks)
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStreamRef.current = stream;
+          setHasMicHardware(true);
+        } catch (fallbackErr: any) {
+          console.warn("[Session] Fallback microphone request failed:", fallbackErr);
+          const isPermissionDenied =
+            fallbackErr.name === "NotAllowedError" ||
+            fallbackErr.name === "PermissionDeniedError" ||
+            fallbackErr.message?.toLowerCase().includes("permission");
+
+          if (isPermissionDenied) {
+            setErrorState(
+              "Microphone access was blocked. Tap the lock/tune icon in your browser URL bar to allow microphone access, then try again."
+            );
+            disconnect("error");
+            return;
+          }
+
+          const isNotFound =
+            fallbackErr.name === "NotFoundError" ||
+            fallbackErr.name === "DevicesNotFoundError" ||
+            fallbackErr.message?.toLowerCase().includes("requested device not found") ||
+            fallbackErr.message?.toLowerCase().includes("not found");
+
+          if (isNotFound) {
+            // Physical hardware not present (e.g. desktop without mic, emulator, or disconnected headset)
+            // Enable Speaker & Text interaction mode so the user can still talk with Aliza
+            console.log("[Session] No physical microphone detected on device. Enabling Speaker & Text interaction mode.");
+            setHasMicHardware(false);
+          } else {
+            setErrorState(`Microphone error: ${fallbackErr.message || "Failed to initialize audio capture."}`);
+            disconnect("error");
+            return;
+          }
+        }
       }
 
       // 2. Initialize unified AudioContext (single context prevents mobile iOS/Android audio conflicts)
@@ -213,20 +243,23 @@ export function useLiveSession() {
       recordingContextRef.current = unifiedAudioContext;
       playbackContextRef.current = unifiedAudioContext;
 
-      const micSource = unifiedAudioContext.createMediaStreamSource(stream);
       const nativeSampleRate = unifiedAudioContext.sampleRate;
 
       // Create mic analyser to visualize user input
       const micAnalyser = unifiedAudioContext.createAnalyser();
       micAnalyser.fftSize = 256;
-      micSource.connect(micAnalyser);
       micAnalyserRef.current = micAnalyser;
 
       // Script processor: 4096 buffer size, 1 input channel, 1 output channel
       const processor = unifiedAudioContext.createScriptProcessor(4096, 1, 1);
-      micSource.connect(processor);
-      processor.connect(unifiedAudioContext.destination);
       processorNodeRef.current = processor;
+
+      if (stream) {
+        const micSource = unifiedAudioContext.createMediaStreamSource(stream);
+        micSource.connect(micAnalyser);
+        micSource.connect(processor);
+        processor.connect(unifiedAudioContext.destination);
+      }
 
       // Create speaker analyser to visualize audio responses
       const speakerAnalyser = unifiedAudioContext.createAnalyser();
@@ -260,7 +293,7 @@ export function useLiveSession() {
       processor.onaudioprocess = (e) => {
         // Continuously send and run mic stream as long as socket is active
         // This coordinates background voice activity detection for flawless interruptions
-        if (stateRef.current !== "listening" && stateRef.current !== "speaking") return;
+        if (!stream || (stateRef.current !== "listening" && stateRef.current !== "speaking")) return;
 
         const inputChannelData = e.inputBuffer.getChannelData(0);
         
@@ -449,6 +482,14 @@ export function useLiveSession() {
     setMemoryEvent(null);
   };
 
+  const sendText = useCallback((text: string) => {
+    if (!text.trim() || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    socketRef.current.send(JSON.stringify({ text: text.trim() }));
+    return true;
+  }, []);
+
   useEffect(() => {
     // Component unmount safeguards
     return () => {
@@ -465,10 +506,12 @@ export function useLiveSession() {
     transcription,
     userVolume,
     alizaVolume,
+    hasMicHardware,
     toolCallEvent,
     memoryEvent,
     connect,
     disconnect,
+    sendText,
     dismissToolCall,
     dismissMemoryEvent,
     micAnalyser: micAnalyserRef.current,

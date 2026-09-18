@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useLiveSession } from "./hooks/useLiveSession";
 import { AuraOrb } from "./components/AuraOrb";
 import { VoiceWaveform } from "./components/VoiceWaveform";
@@ -28,6 +28,7 @@ import {
   User as UserIcon,
   LogIn,
   Brain,
+  Send,
 } from "lucide-react";
 
 export default function App() {
@@ -37,10 +38,12 @@ export default function App() {
     transcription,
     userVolume,
     alizaVolume,
+    hasMicHardware,
     toolCallEvent,
     memoryEvent,
     connect,
     disconnect,
+    sendText,
     dismissToolCall,
     dismissMemoryEvent,
     micAnalyser,
@@ -61,12 +64,38 @@ export default function App() {
   // Dynamic system digital clock
   const [currentTime, setCurrentTime] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [chatInput, setChatInput] = useState("");
   const [healthStatus, setHealthStatus] = useState<{
     healthy: boolean;
     keyConfigured: boolean;
     serverReachable: boolean;
   } | null>(null);
   const sessionStartRef = useRef<number>(0);
+
+  const handleSendChat = (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    const textToSend = chatInput.trim();
+    if (!textToSend) return;
+    if (state === "disconnected" || state === "error") {
+      sessionStartRef.current = Date.now();
+      connect({
+        user,
+        preferredName,
+        memories,
+        onRememberFact: (fact, category) => {
+          addMemory(fact, (category as any) || "fact");
+        },
+      }).then(() => {
+        setTimeout(() => {
+          sendText(textToSend);
+          setChatInput("");
+        }, 1200);
+      });
+    } else {
+      sendText(textToSend);
+      setChatInput("");
+    }
+  };
 
   useEffect(() => {
     fetch("/api/health")
@@ -350,6 +379,34 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Quick Message Input Bar (Supports both Voice & No-Mic Speaker Mode) */}
+        <form
+          onSubmit={handleSendChat}
+          className="w-full max-w-sm flex items-center gap-2 bg-zinc-900/60 hover:bg-zinc-900/90 border border-white/10 focus-within:border-pink-500/50 rounded-full px-3 py-1.5 transition-all shadow-lg backdrop-blur-md"
+        >
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder={
+              !hasMicHardware
+                ? "No mic detected. Type to Aliza here..."
+                : state === "listening" || state === "speaking"
+                ? "Type or speak to Aliza..."
+                : "Type message or tap connect below..."
+            }
+            className="flex-1 bg-transparent text-xs text-white placeholder-zinc-500 outline-none px-2 py-1 font-sans"
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim()}
+            className="w-7 h-7 rounded-full bg-pink-600 hover:bg-pink-500 disabled:opacity-30 disabled:hover:bg-pink-600 flex items-center justify-center text-white transition-all cursor-pointer shadow-sm"
+            title="Send to Aliza"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </form>
 
         {/* Bottom Interactive Dashboard Controller Actions */}
         <div className="w-full max-w-md flex justify-between items-center px-4 pt-4">

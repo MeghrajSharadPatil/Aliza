@@ -357,6 +357,19 @@ wss.on("connection", (clientWs: WebSocket, request: any) => {
             console.error("[WS] Failed to send real-time audio chunk:", err);
           });
       }
+
+      // Client shares direct text input
+      if (data.text) {
+        sessionPromise
+          .then((session) => {
+            session.sendRealtimeInput({
+              text: String(data.text),
+            });
+          })
+          .catch((err) => {
+            console.error("[WS] Failed to send real-time text chunk:", err);
+          });
+      }
     } catch (err) {
       console.error("[WS] Web socket parsing translation failed:", err);
     }
