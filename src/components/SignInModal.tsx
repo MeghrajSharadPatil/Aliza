@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Sparkles, Mail, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -16,26 +16,9 @@ export function SignInModal() {
 
   const [activeTab, setActiveTab] = useState<"google" | "email">("google");
   const [emailAuthMode, setEmailAuthMode] = useState<"signin" | "signup">("signin");
-  const [googleEmailInput, setGoogleEmailInput] = useState("");
   const [showCreatorOption, setShowCreatorOption] = useState(false);
 
   if (!isSignInModalOpen) return null;
-
-  const handleCustomGoogleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!googleEmailInput.trim()) return;
-    const email = googleEmailInput.trim();
-    const derivedName = email.split("@")[0].replace(/[._]/g, " ");
-    const formattedName = derivedName
-      .split(" ")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
-
-    signInWithGoogle({
-      email,
-      name: formattedName,
-    });
-  };
 
   return (
     <AnimatePresence>
@@ -105,48 +88,16 @@ export function SignInModal() {
           </div>
 
           {activeTab === "google" ? (
-            <div className="space-y-4">
+            <div className="space-y-4 py-2">
               {/* Standard Sign in with Google Button */}
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => signInWithGoogle()}
-                  className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl font-medium text-xs flex items-center justify-center space-x-3 shadow-md transition-all cursor-pointer border border-zinc-200"
-                >
-                  <GoogleSvgIcon className="w-4 h-4" />
-                  <span className="font-semibold text-[13px]">Sign in with Google</span>
-                </button>
-
-                <div className="relative flex py-1 items-center">
-                  <div className="flex-grow border-t border-white/10"></div>
-                  <span className="flex-shrink mx-3 text-[10px] uppercase font-mono text-zinc-500 tracking-wider">or sign in with email</span>
-                  <div className="flex-grow border-t border-white/10"></div>
-                </div>
-
-                {/* Quick Google Account Input Form */}
-                <form onSubmit={handleCustomGoogleSubmit} className="space-y-3 p-3.5 bg-zinc-900/60 border border-white/5 rounded-xl">
-                  <div>
-                    <label className="block text-[11px] font-medium text-zinc-300 mb-1">
-                      Your Google Email
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={googleEmailInput}
-                      onChange={(e) => setGoogleEmailInput(e.target.value)}
-                      placeholder="you@gmail.com"
-                      className="w-full px-3.5 py-2 bg-zinc-950 border border-white/10 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-pink-500/50"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer border border-white/10"
-                  >
-                    <GoogleSvgIcon className="w-3.5 h-3.5" />
-                    <span>Continue with this Email</span>
-                  </button>
-                </form>
-              </div>
+              <button
+                type="button"
+                onClick={() => signInWithGoogle()}
+                className="w-full py-3.5 px-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl font-medium text-xs flex items-center justify-center space-x-3 shadow-md transition-all cursor-pointer border border-zinc-200"
+              >
+                <GoogleSvgIcon className="w-5 h-5" />
+                <span className="font-semibold text-sm">Sign in with Google</span>
+              </button>
             </div>
           ) : (
             /* Email / Supabase Auth tab */
