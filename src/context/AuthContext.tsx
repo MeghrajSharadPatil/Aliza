@@ -83,23 +83,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithGoogle = (customAccount?: { name: string; email: string; photoUrl?: string }) => {
-    const email = customAccount?.email || "meghrajpatil1313@gmail.com";
-    const name = customAccount?.name || "Meghraj Patil";
-    const isCreator = email.toLowerCase().includes("meghraj") || name.toLowerCase().includes("meghraj");
+  const signInWithGoogle = async (customAccount?: { name: string; email: string; photoUrl?: string }) => {
+    if (customAccount) {
+      const email = customAccount.email.trim();
+      const name = customAccount.name.trim() || email.split("@")[0];
+      const isCreator = email.toLowerCase().includes("meghraj") || name.toLowerCase().includes("meghraj");
 
-    const googleUser: User = {
-      id: `google-${Date.now()}`,
-      name,
-      email,
-      photoUrl: customAccount?.photoUrl || (isCreator ? CREATOR_PROFILE.photoUrl : undefined),
-      isCreator,
-      provider: "google",
-      signedInAt: new Date().toISOString(),
-    };
+      const googleUser: User = {
+        id: `google-${Date.now()}`,
+        name,
+        email,
+        photoUrl: customAccount?.photoUrl || (isCreator ? CREATOR_PROFILE.photoUrl : undefined),
+        isCreator,
+        provider: "google",
+        signedInAt: new Date().toISOString(),
+      };
 
-    saveUser(googleUser);
-    setIsSignInModalOpen(false);
+      saveUser(googleUser);
+      setIsSignInModalOpen(false);
+      return;
+    }
+
+    // Attempt real Supabase Google OAuth
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+      if (error) {
+        console.warn("Supabase Google OAuth error:", error.message);
+      }
+    } catch (err) {
+      console.warn("Supabase Google OAuth error:", err);
+    }
   };
 
   const signInAsCreator = () => {

@@ -1,6 +1,6 @@
 import { useState, FormEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Sparkles, Mail, Check, ArrowRight, UserCheck, ShieldCheck } from "lucide-react";
+import { X, Sparkles, Mail, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { SignIn } from "./SignIn";
 import { SignUp } from "./SignUp";
@@ -17,7 +17,7 @@ export function SignInModal() {
   const [activeTab, setActiveTab] = useState<"google" | "email">("google");
   const [emailAuthMode, setEmailAuthMode] = useState<"signin" | "signup">("signin");
   const [googleEmailInput, setGoogleEmailInput] = useState("");
-  const [isCustomGoogleActive, setIsCustomGoogleActive] = useState(false);
+  const [showCreatorOption, setShowCreatorOption] = useState(false);
 
   if (!isSignInModalOpen) return null;
 
@@ -106,99 +106,47 @@ export function SignInModal() {
 
           {activeTab === "google" ? (
             <div className="space-y-4">
-              {/* Creator Recommended Profile (Meghraj Patil) */}
-              <div className="p-4 rounded-xl border border-pink-500/30 bg-gradient-to-r from-pink-950/20 via-zinc-900/50 to-zinc-900/40 relative overflow-hidden">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-pink-400 flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Verified Creator Account
-                  </span>
-                  <span className="px-2 py-0.5 bg-pink-500/20 border border-pink-500/30 text-[9px] font-bold text-pink-300 rounded-full font-mono">
-                    OWNER
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-3 mb-3.5">
-                  <div className="relative">
-                    <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-pink-500/40 bg-zinc-800 flex items-center justify-center text-white font-bold">
-                      <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                        alt="Meghraj Patil"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0d0d11]" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">Meghraj Patil</h4>
-                    <p className="text-[11px] text-zinc-400 font-mono">meghrajpatil1313@gmail.com</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={signInAsCreator}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white rounded-lg font-medium text-xs flex items-center justify-center space-x-2 shadow-lg shadow-pink-600/20 transition-all cursor-pointer"
-                >
-                  <GoogleSvgIcon className="w-4 h-4 bg-white rounded-full p-0.5" />
-                  <span>Continue with Google as Meghraj Patil</span>
-                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                </button>
-              </div>
-
               {/* Standard Sign in with Google Button */}
-              {!isCustomGoogleActive ? (
-                <div className="space-y-2.5">
-                  <button
-                    onClick={() => signInWithGoogle()}
-                    className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl font-medium text-xs flex items-center justify-center space-x-3 shadow-md transition-all cursor-pointer border border-zinc-200"
-                  >
-                    <GoogleSvgIcon className="w-4 h-4" />
-                    <span className="font-semibold text-[13px]">Sign in with Google</span>
-                  </button>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => signInWithGoogle()}
+                  className="w-full py-3 px-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl font-medium text-xs flex items-center justify-center space-x-3 shadow-md transition-all cursor-pointer border border-zinc-200"
+                >
+                  <GoogleSvgIcon className="w-4 h-4" />
+                  <span className="font-semibold text-[13px]">Sign in with Google</span>
+                </button>
 
-                  <div className="text-center">
-                    <button
-                      onClick={() => setIsCustomGoogleActive(true)}
-                      className="text-[11px] text-zinc-400 hover:text-zinc-200 underline underline-offset-4 cursor-pointer transition-colors"
-                    >
-                      Use another Google account
-                    </button>
-                  </div>
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-white/10"></div>
+                  <span className="flex-shrink mx-3 text-[10px] uppercase font-mono text-zinc-500 tracking-wider">or sign in with email</span>
+                  <div className="flex-grow border-t border-white/10"></div>
                 </div>
-              ) : (
+
+                {/* Quick Google Account Input Form */}
                 <form onSubmit={handleCustomGoogleSubmit} className="space-y-3 p-3.5 bg-zinc-900/60 border border-white/5 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-medium text-zinc-300">
-                      Enter your Google Email
+                  <div>
+                    <label className="block text-[11px] font-medium text-zinc-300 mb-1">
+                      Your Google Email
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomGoogleActive(false)}
-                      className="text-[10px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  <div className="relative">
                     <input
                       type="email"
                       required
                       value={googleEmailInput}
                       onChange={(e) => setGoogleEmailInput(e.target.value)}
-                      placeholder="yourname@gmail.com"
-                      className="w-full px-3.5 py-2.5 bg-zinc-950 border border-white/10 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-pink-500/50"
+                      placeholder="you@gmail.com"
+                      className="w-full px-3.5 py-2 bg-zinc-950 border border-white/10 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-pink-500/50"
                     />
                   </div>
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-white hover:bg-zinc-100 text-zinc-900 rounded-lg font-semibold text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer border border-white/10"
                   >
-                    <GoogleSvgIcon className="w-4 h-4" />
-                    <span>Proceed with Google Account</span>
+                    <GoogleSvgIcon className="w-3.5 h-3.5" />
+                    <span>Continue with this Email</span>
                   </button>
                 </form>
-              )}
+              </div>
             </div>
           ) : (
             /* Email / Supabase Auth tab */
@@ -251,6 +199,33 @@ export function SignInModal() {
             >
               Continue as Guest
             </button>
+          </div>
+
+          {/* Discreet Owner Access Toggle */}
+          <div className="mt-3 pt-2 text-center">
+            {!showCreatorOption ? (
+              <button
+                type="button"
+                onClick={() => setShowCreatorOption(true)}
+                className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
+              >
+                Owner access
+              </button>
+            ) : (
+              <div className="p-2.5 rounded-lg border border-pink-500/20 bg-pink-950/20 flex items-center justify-between">
+                <span className="text-[11px] text-pink-300 font-mono flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Creator Mode
+                </span>
+                <button
+                  type="button"
+                  onClick={signInAsCreator}
+                  className="px-2.5 py-1 bg-pink-600 hover:bg-pink-500 text-white rounded text-[10px] font-bold tracking-wider uppercase transition-colors cursor-pointer"
+                >
+                  Log In as Meghraj
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
